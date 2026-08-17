@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    { "source": "/heard", "destination": "/api/heard" },
+    { "source": "/inbox", "destination": "/api/inbox" },
+    { "source": "/say", "destination": "/api/say" },
+    { "source": "/poll", "destination": "/api/poll" }
+  ]
+}

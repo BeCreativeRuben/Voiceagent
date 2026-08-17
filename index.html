@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Grok Voice</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; font-family: system-ui, sans-serif; background: #111; color: #eee; min-height: 100dvh; display: flex; flex-direction: column; }
+  header { padding: 16px 16px 8px; }
+  h1 { font-size: 18px; margin: 0; font-weight: 600; }
+  p.sub { margin: 6px 0 0; color: #aaa; font-size: 13px; }
+  #log { flex: 1; overflow: auto; padding: 8px 16px 120px; }
+  .msg { margin: 8px 0; padding: 10px 12px; border-radius: 12px; max-width: 90%; white-space: pre-wrap; }
+  .you { background: #2a3a2a; margin-left: auto; }
+  .bot { background: #222; }
+  .sys { color: #888; font-size: 12px; }
+  #bar { position: fixed; left: 0; right: 0; bottom: 0; padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); background: #111; }
+  button { width: 100%; height: 64px; border: 0; border-radius: 16px; font-size: 18px; font-weight: 600; background: #3d7a4a; color: #fff; touch-action: none; }
+  button.rec { background: #a33; }
+  button:disabled { opacity: .5; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Grok Voice</h1>
+  <p class="sub">Houd de knop in, praat, laat los. Antwoorden spelen hier af.</p>
+</header>
+<div id="log"></div>
+<div id="bar"><button id="btn" type="button">Houd in om te praten</button></div>
+<script>
+const logEl = document.getElementById("log");
+const btn = document.getElementById("btn");
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null;
+let lastPoll = 0;
+let unlocked = false;
+
+function add(cls, text) {
+  const d = document.createElement("div");
+  d.className = "msg " + cls;
+  d.textContent = text;
+  logEl.appendChild(d);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function unlockSpeak() {
+  if (unlocked || !window.speechSynthesis) return;
+  const u = new SpeechSynthesisUtterance(" ");
+  u.volume = 0;
+  speechSynthesis.speak(u);
+  speechSynthesis.cancel();
+  unlocked = true;
+}
+
+function speak(text) {
+  if (!window.speechSynthesis) {
+    add("sys", "Geen speechSynthesis op deze browser");
+    return;
+  }
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = "nl-NL";
+  const voices = speechSynthesis.getVoices();
+  const nl = voices.find(v => (v.lang || "").toLowerCase().startsWith("nl"));
+  if (nl) u.voice = nl;
+  speechSynthesis.speak(u);
+}
+
+function makeRec() {
+  if (!SR) return null;
+  const r = new SR();
+  r.lang = "nl-NL";
+  r.interimResults = true;
+  r.continuous = true;
+  return r;
+}
+
+btn.addEventListener("pointerdown", (e) => {
+  e.preventDefault();
+  unlockSpeak();
+  if (!SR) {
+    add("sys", "Web Speech API ontbreekt. Open deze pagina in Safari op iPhone.");
+    return;
+  }
+  try {
+    if (rec) { try { rec.stop(); } catch (err) {} }
+    rec = makeRec();
+    rec.onresult = () => {};
+    rec.onerror = (ev) => {
+      if (ev.error !== "aborted" && ev.error !== "no-speech") {
+        add("sys", "Mic: " + ev.error);
+      }
+    };
+    rec.start();
+    btn.classList.add("rec");
+    btn.textContent = "Luisteren... laat los";
+  } catch (err) {
+    add("sys", "Mic start niet: " + err.message);
+  }
+});
+
+async function stopRec() {
+  if (!rec) return;
+  const current = rec;
+  rec = null;
+  const text = await new Promise((resolve) => {
+    let finalText = "";
+    current.onresult = (ev) => {
+      let out = "";
+      for (let i = 0; i < ev.results.length; i++) {
+        out += ev.results[i][0].transcript;
+        if (ev.results[i].isFinal) finalText = out;
+      }
+      if (!finalText) finalText = out;
+    };
+    current.onend = () => resolve((finalText || "").trim());
+    try { current.stop(); } catch (err) { resolve(""); }
+    setTimeout(() => resolve((finalText || "").trim()), 1200);
+  });
+  btn.classList.remove("rec");
+  btn.textContent = "Houd in om te praten";
+  if (!text) {
+    add("sys", "Niets verstaan");
+    return;
+  }
+  add("you", text);
+  try {
+    await fetch("/api/heard", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text })
+    });
+  } catch (err) {
+    add("sys", "Inbox fout: " + err.message);
+  }
+}
+
+btn.addEventListener("pointerup", stopRec);
+btn.addEventListener("pointercancel", stopRec);
+btn.addEventListener("pointerleave", (e) => { if (e.buttons) stopRec(); });
+
+async function poll() {
+  try {
+    const r = await fetch("/api/poll?since=" + lastPoll, { cache: "no-store" });
+    const j = await r.json();
+    if (j.ts) lastPoll = j.ts;
+    if (j.text) {
+      add("bot", j.text);
+      speak(j.text);
+    }
+  } catch (e) {}
+  setTimeout(poll, 1200);
+}
+poll();
+
+if (!SR) add("sys", "Geen SpeechRecognition. Gebruik Safari op iPhone.");
+else add("sys", "Klaar. Houd de knop in.");
+</script>
+</body>
+</html>
