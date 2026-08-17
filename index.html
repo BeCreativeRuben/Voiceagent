@@ -21,6 +21,7 @@
   button.rec { background: #a33; }
   button:disabled { opacity: .5; }
   #mic-gate { position: fixed; inset: 0; z-index: 9999; background: #111; display: flex; align-items: center; justify-content: center; }
+  #mic-gate[hidden] { display: none !important; }
   #mic-gate button { width: auto; padding: 0 32px; height: 72px; font-size: 20px; border-radius: 20px; background: #3d7a4a; }
 </style>
 </head>
@@ -61,12 +62,14 @@ function unlockSpeak() {
 
 function micGranted() {
   micGate.hidden = true;
+  micGate.style.display = "none";
   btn.disabled = false;
   add("sys", "Klaar. Tik op de knop om te praten.");
 }
 
 function micDenied() {
   micGate.hidden = true;
+  micGate.style.display = "none";
   btn.disabled = true;
   add("sys", "Microfoon geweigerd. Schakel de microfoon in via Safari-instellingen voor deze site.");
 }
@@ -89,13 +92,8 @@ async function initMicPermission() {
     add("sys", "Geen SpeechRecognition. Gebruik Safari op iPhone.");
     return;
   }
-
-  const result = await requestMic();
-  if (result === "granted") {
-    micGranted();
-    return;
-  }
-
+  // First getUserMedia must be from a tap on iOS, or the prompt never appears
+  // and a CSS display:flex on #mic-gate used to ignore [hidden].
   micGate.hidden = false;
 }
 
