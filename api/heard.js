@@ -8,6 +8,6 @@ module.exports = async (req, res) => {
   if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
   const text = String((req.body && req.body.text) || "").trim();
   if (!text) return res.status(400).json({ error: "empty" });
-  setInbox(text);
+  await setInbox(text);
   return res.status(200).json({ text });
 };
