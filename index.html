@@ -27,11 +27,11 @@
 <body>
 <header>
   <h1>Grok Voice</h1>
-  <p class="sub">Houd de knop in, praat, laat los. Antwoorden spelen hier af.</p>
+  <p class="sub">Tik op de knop, praat, tik opnieuw. Antwoorden spelen hier af.</p>
 </header>
 <div id="mic-gate" hidden><button id="mic-gate-btn" type="button">Tik om de microfoon toe te staan</button></div>
 <div id="log"></div>
-<div id="bar"><button id="btn" type="button" disabled>Houd in om te praten</button></div>
+<div id="bar"><button id="btn" type="button" disabled>Tik om te praten</button></div>
 <script>
 const logEl = document.getElementById("log");
 const btn = document.getElementById("btn");
@@ -62,13 +62,13 @@ function unlockSpeak() {
 function micGranted() {
   micGate.hidden = true;
   btn.disabled = false;
-  add("sys", "Klaar. Houd de knop in.");
+  add("sys", "Klaar. Tik op de knop om te praten.");
 }
 
 function micDenied() {
   micGate.hidden = true;
   btn.disabled = true;
-  add("sys", "Microfoon geblokkeerd. Ga naar Safari → AA (linksboven) → Microfoon aanzetten voor deze site.");
+  add("sys", "Microfoon geweigerd. Schakel de microfoon in via Safari-instellingen voor deze site.");
 }
 
 async function requestMic() {
@@ -132,13 +132,22 @@ function makeRec() {
   return r;
 }
 
-btn.addEventListener("pointerdown", (e) => {
-  e.preventDefault();
+let recording = false;
+
+btn.addEventListener("click", () => {
   unlockSpeak();
   if (!SR) {
     add("sys", "Web Speech API ontbreekt. Open deze pagina in Safari op iPhone.");
     return;
   }
+  if (!recording) {
+    startRec();
+  } else {
+    stopRec();
+  }
+});
+
+function startRec() {
   try {
     if (rec) { try { rec.stop(); } catch (err) {} }
     rec = makeRec();
@@ -149,17 +158,22 @@ btn.addEventListener("pointerdown", (e) => {
       }
     };
     rec.start();
+    recording = true;
     btn.classList.add("rec");
-    btn.textContent = "Luisteren... laat los";
+    btn.textContent = "Luisteren... tik om te stoppen";
   } catch (err) {
     add("sys", "Mic start niet: " + err.message);
   }
-});
+}
 
 async function stopRec() {
   if (!rec) return;
+  recording = false;
   const current = rec;
   rec = null;
+  btn.disabled = true;
+  btn.classList.remove("rec");
+  btn.textContent = "Verwerken...";
   const text = await new Promise((resolve) => {
     let finalText = "";
     current.onresult = (ev) => {
@@ -174,8 +188,8 @@ async function stopRec() {
     try { current.stop(); } catch (err) { resolve(""); }
     setTimeout(() => resolve((finalText || "").trim()), 1200);
   });
-  btn.classList.remove("rec");
-  btn.textContent = "Houd in om te praten";
+  btn.disabled = false;
+  btn.textContent = "Tik om te praten";
   if (!text) {
     add("sys", "Niets verstaan");
     return;
@@ -191,10 +205,6 @@ async function stopRec() {
     add("sys", "Inbox fout: " + err.message);
   }
 }
-
-btn.addEventListener("pointerup", stopRec);
-btn.addEventListener("pointercancel", stopRec);
-btn.addEventListener("pointerleave", (e) => { if (e.buttons) stopRec(); });
 
 async function poll() {
   try {
